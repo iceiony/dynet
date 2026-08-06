@@ -1,3 +1,12 @@
+Patched up version of Dynet to still build in 2026. Updated dependencies:
+* gcc 16.1.1 (with c++12)
+* cuda 13.2
+* python 3.14
+* eigen 5.0.1
+* cmake 4.3.0
+
+
+
 <div align="center">
   <img alt="DyNet" src="doc/source/images/dynet_logo.png"><br><br>
 </div>
