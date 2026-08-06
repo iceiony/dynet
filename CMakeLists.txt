@@ -1,5 +1,5 @@
 project(dynet)
-cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
@@ -20,16 +20,23 @@ function(find_mkl)
   set(MKL_ARCH intel64)
   find_path(MKL_INCLUDE_DIR mkl.h
             PATHS ${MKL_ROOT} ${MKL_ROOT}/include)
-  find_library(MKL_CORE_LIB NAMES mkl_intel_lp64 mkl_intel_thread mkl_core
-               PATHS ${MKL_ROOT} ${MKL_ROOT}/lib/${MKL_ARCH}
+  find_library(MKL_CORE_LIB NAMES lp64 mkl_intel_thread mkl_core
+               PATHS ${MKL_ROOT} ${MKL_ROOT}/lib/ 
+                     ${MKL_ROOT}/lib/${MKL_ARCH}
                      ${MKL_ROOT}/lib #OSX
-               DOC "MKL core library path")
+               DOC "MKL core library path"
+               NO_DEFAULT_PATH)
 
   find_library(MKL_COMPILER_LIB NAMES iomp5 libiomp5md
-               PATHS ${MKL_ROOT} ${MKL_ROOT}/../compiler/lib/${MKL_ARCH}              #Windows
-                     ${MKL_ROOT}/../compilers_and_libraries/linux/lib/${MKL_ARCH}_lin #Linux
-                     ${MKL_ROOT}/../compilers_and_libraries/mac/lib                   #OSX
-               DOC "MKL compiler lib (for threaded MKL)")
+               PATHS ${MKL_ROOT} ${MKL_ROOT}/../../compiler/latest/lib/
+                     ${MKL_ROOT}/../../compiler/linux/lib/${MKL_ARCH}_lin #Linux
+                     ${MKL_ROOT}/../../compiler/mac/lib                   #OSX
+               DOC "MKL compiler lib (for threaded MKL)"
+               NO_DEFAULT_PATH)
+
+  message(STATUS "MKL_INCLUDE_DIR: ${MKL_INCLUDE_DIR}")
+  message(STATUS "MKL_CORE_LIB: ${MKL_CORE_LIB}")
+  message(STATUS "MKL_COMPILER_LIB: ${MKL_COMPILER_LIB}")
 
   if(MKL_INCLUDE_DIR AND MKL_CORE_LIB AND MKL_COMPILER_LIB)
     get_filename_component(MKL_CORE_LIB_DIR ${MKL_CORE_LIB} DIRECTORY)
@@ -49,6 +56,9 @@ endfunction()
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
+
+#fix nan-infitity warnings
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-nan-infinity-disabled")
 
 ######## Cross-compiler, cross-platform options
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEIGEN_FAST_MATH")
@@ -80,7 +90,7 @@ endif()
 if(MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W1 /MP")   # -Wall produces 20k warnings. Enable parallel compilation
 else()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -fno-finite-math-only -Wall -Wno-missing-braces -std=c++11")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -fno-finite-math-only -Wall -Wno-missing-braces -std=c++20")
 
   if (NOT RELEASE_OPT_LEVEL)
     set(RELEASE_OPT_LEVEL "fast")
@@ -94,32 +104,6 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}
                     ${PROJECT_SOURCE_DIR}/external/easyloggingpp/src)
-
-function(find_cudnn)
-  if (DEFINED ENV{CUDNN_ROOT} AND NOT DEFINED CUDNN_ROOT)  # use env variable if not defined
-    set(CUDNN_ROOT $ENV{CUDNN_ROOT})
-  elseif (DEFINED CUDA_TOOLKIT_ROOT_DIR AND NOT DEFINED CUDNN_ROOT)  # use env variable if not defined
-    set(CUDNN_ROOT ${CUDA_TOOLKIT_ROOT_DIR})
-  endif()
-#  set(CUDNN_ROOT /usr/local/cuda CACHE PATH "CUDNN root path")
-  find_path(CUDNN_INCLUDE_DIRS cudnn.h
-    HINTS ${CUDNN_ROOT}
-          ${CUDNN_ROOT}/include
-    DOC "CUDNN include path")
-  find_library(CUDNN_LIBRARIES NAMES libcudnn.so cudnn.lib
-    PATHS ${CUDNN_ROOT}
-          ${CUDNN_ROOT}/lib
-          ${CUDNN_ROOT}/lib64
-          ${CUDNN_ROOT}/lib/x64
-    DOC "CUDNN library path")
-  if(CUDNN_INCLUDE_DIRS AND CUDNN_LIBRARIES)
-    set(CUDNN_FOUND TRUE PARENT_SCOPE)
-    message(STATUS "Found CUDNN (include: ${CUDNN_INCLUDE_DIRS}, library: ${CUDNN_LIBRARIES})")
-    mark_as_advanced(CUDNN_INCLUDE_DIRS CUDNN_LIBRARIES)
-  else()
-    MESSAGE(STATUS "Failed to find CUDNN in path: ${CUDNN_ROOT} (Did you set CUDNN_ROOT properly?)")
-  endif()
-endfunction()
 
 # look for Boost
 if(ENABLE_BOOST)
@@ -158,20 +142,15 @@ else()
 endif()
 
 if (WITH_CUDA_BACKEND)
-  find_package(CUDA REQUIRED)
-  set(CUDA_TOOLKIT_ROOT_DIR ${CUDA_ROOT})
-  include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
-  #list(APPEND CUDA_LIBRARIES /usr/lib64/libpthread.so)
-  list(APPEND CUDA_LIBRARIES ${CUDA_curand_LIBRARY})
-  MESSAGE("CUDA_LIBRARIES: ${CUDA_LIBRARIES}")
-  list(REMOVE_ITEM CUDA_LIBRARIES -lpthread)
-  set(LIBS ${LIBS} ${CUDA_LIBRARIES})
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+
+  set(LIBS ${LIBS} CUDA::cudart CUDA::curand)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEIGEN_USE_GPU")
-  find_cudnn()
-  if(CUDNN_FOUND)
-    include_directories(SYSTEM ${CUDNN_INCLUDE_DIRS})
-    list(APPEND CUDA_LIBRARIES ${CUDNN_LIBRARIES})
-    message("-- Successfully include CUDNN flags")
+
+  if(TARGET CUDA::cudnn)
+    set(LIBS ${LIBS} CUDA::cudnn)
+    message("-- Successfully found CUDNN")
   else()
     message("-- CUDNN not found, some dependent functionalities will be disabled")
   endif()

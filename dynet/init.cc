@@ -74,8 +74,14 @@ static std::string get_arg(int argi, char** argv) {
   return argv[argi + 1];
 }
 
-DynetParams extract_dynet_params(int& argc,
-                                 char**& argv, bool shared_parameters) {
+DynetParams extract_dynet_params(int& argc, char**& argv, bool shared_parameters) {
+
+#if HAVE_CUDA
+    cout << "[dynet] CUDA is available. Compiled with CUDA support.\n";
+#elif
+    cout << "[dynet] CUDA is not available. Compiled without CUDA support.\n";
+#endif
+
   DynetParams params;
   params.shared_parameters = shared_parameters;
 
@@ -84,7 +90,6 @@ DynetParams extract_dynet_params(int& argc,
 #if HAVE_CUDA
   params.gpu_mask = std::vector<int>(MAX_GPUS, 0);
 #endif
-
 
   while (argi < argc) {
     string arg = argv[argi];
@@ -134,7 +139,6 @@ DynetParams extract_dynet_params(int& argc,
         remove_args(argc, argv, argi, 2);
       }
     }
-
     // Profiling
     else if (startswith(arg, "--dynet-profiling") ||
              startswith(arg, "--dynet_profiling")) {
@@ -227,7 +231,7 @@ void initialize(DynetParams& params) {
   vector<Device*> gpudevices;
 #if HAVE_CUDA
   if (!(params.cpu_requested && (params.requested_gpus == -1))) {
-    cerr << "[dynet] initializing CUDA\n";
+    cout << "[dynet] initializing CUDA\n";
     gpudevices = initialize_gpu(params);
     for (auto gpu : gpudevices)
       device_manager->add(gpu);
