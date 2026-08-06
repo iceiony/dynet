@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <queue>
+#include <cassert>
 
 #include "dynet/param-nodes.h"
 #include "dynet/globals.h"

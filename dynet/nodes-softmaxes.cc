@@ -1,3 +1,4 @@
+#include <cassert>
 #include "dynet/tensor-eigen.h"
 #include "dynet/nodes-softmaxes.h"
 

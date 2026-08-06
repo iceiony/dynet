@@ -15,17 +15,25 @@ namespace dynet {
 vector<Device*> initialize_gpu(DynetParams& params) {
   // Get GPU devices count
   int nDevices;
+
+  cout << "[dynet] Counting cuda devices ...\n";
   CUDA_CHECK(cudaGetDeviceCount(&nDevices));
   if (nDevices < 1)
     throw std::runtime_error("No GPUs found but DyNet compiled with CUDA support. Recompile without -DBACKEND=cuda");
 
+  cout << "[dynet] Found " << nDevices << " CUDA device" << (nDevices > 1 ? "s" : "") << endl;
+
   // Get CUDA runtime/driver version
   int runtimeVersion = 0;
   int driverVersion = 0;
+
   cudaRuntimeGetVersion(&runtimeVersion);
+  cout << "[dynet] CUDA runtime version is "
+       <<runtimeVersion/1000<<"."<<(runtimeVersion%100)/10<<endl;
+
+
   cudaDriverGetVersion(&driverVersion);
-  cerr << "[dynet] CUDA driver/runtime versions are "
-       <<runtimeVersion/1000<<"."<<(runtimeVersion%100)/10<<"/"
+  cout << "[dynet] CUDA driver version is "
        <<driverVersion/1000<<"."<<(driverVersion%1000)/10<<endl;
 
   // Check gpu_mask
@@ -38,11 +46,11 @@ vector<Device*> initialize_gpu(DynetParams& params) {
 
   if (params.ngpus_requested || params.requested_gpus == -1) {
     if (params.requested_gpus == -1) params.requested_gpus = 1;
-    cerr << "Request for " << params.requested_gpus << " GPU" << (params.requested_gpus == 1 ? "" : "s") << " ...\n";
+    cout << "[dynet] Request for " << params.requested_gpus << " GPU" << (params.requested_gpus == 1 ? "" : "s") << ":" << endl;
     for (int i = 0; i < MAX_GPUS; ++i) params.gpu_mask[i] = 1;
   } else if (params.ids_requested) {
     params.requested_gpus++; // since start from -1
-    cerr << "[dynet] Request for " << params.requested_gpus << " specific GPU" << (params.requested_gpus == 1 ? "" : "s") << " ...\n";
+    cout << "[dynet] Request for " << params.requested_gpus << " specific GPU" << (params.requested_gpus == 1 ? "" : "s") << " ..." << endl;
   }
 
   vector<Device*> gpudevices;
@@ -64,21 +72,26 @@ vector<Device*> initialize_gpu(DynetParams& params) {
     if (!params.gpu_mask[i]) continue;
     cudaDeviceProp prop;
     CUDA_CHECK(cudaGetDeviceProperties(&prop, i));
-    cerr << "[dynet] Device Number: " << i << endl;
-    cerr << "[dynet]   Device name: " << prop.name << endl;
-    cerr << "[dynet]   Memory Clock Rate (KHz): " << prop.memoryClockRate << endl;
-    cerr << "[dynet]   Memory Bus Width (bits): " << prop.memoryBusWidth << endl;
-    cerr << "[dynet]   Peak Memory Bandwidth (GB/s): " << (2.0 * prop.memoryClockRate * (prop.memoryBusWidth / 8) / 1.0e6) << endl;
+    cout << "[dynet] Device Number: " << i << endl;
+    cout << "[dynet]   Device name: " << prop.name << endl;
+
+    int memClockKHz, memBusWidth;
+    cudaDeviceGetAttribute(&memClockKHz, cudaDevAttrMemoryClockRate, i);
+    cudaDeviceGetAttribute(&memBusWidth, cudaDevAttrGlobalMemoryBusWidth, i);
+    cout << "[dynet]   Memory Clock Rate (KHz): " << memClockKHz << endl;
+    cout << "[dynet]   Memory Bus Width (bits): " << memBusWidth << endl;
+    cout << "[dynet]   Peak Memory Bandwidth (GB/s): " << (2.0 * memClockKHz * (memBusWidth / 8) / 1.0e6) << endl;
+
     if (!prop.unifiedAddressing)
       throw std::invalid_argument("[dynet] GPU does not support unified addressing.");
     CUDA_CHECK(cudaSetDevice(i));
     try {
       CUDA_CHECK(cudaMemGetInfo( &free_bytes, &total_bytes ));
-      cerr << "[dynet]   Memory Free (GB): " << free_bytes / 1.0e9 << "/" << total_bytes / 1.0e9 << endl;
-      cerr << "[dynet]" << endl;
+      cout << "[dynet]   Memory Free (GB): " << free_bytes / 1.0e9 << "/" << total_bytes / 1.0e9 << endl;
+      cout << "[dynet]" << endl;
       gpu_free_mem[i] = free_bytes;
     } catch (dynet::cuda_exception e) {
-      cerr << "[dynet]   FAILED to get free memory" << endl;
+      cout << "[dynet]   FAILED to get free memory" << endl;
       gpu_free_mem[i] = 0;
       cudaGetLastError();
     }
@@ -86,14 +99,14 @@ vector<Device*> initialize_gpu(DynetParams& params) {
   }
   stable_sort(gpus.begin(), gpus.end(), [&](int a, int b) -> bool { return gpu_free_mem[a] > gpu_free_mem[b]; });
   gpus.resize(params.requested_gpus);
-  cerr << "[dynet] Device(s) selected:";
+  cout << "[dynet] Device(s) selected:";
   for (int i = 0; i < params.requested_gpus; ++i) {
-    cerr << ' ' << gpus[i];
+    cout << ' ' << gpus[i];
     Device* d = new Device_GPU(gpudevices.size(), params.mem_descriptor,
                                gpus[i], params.random_seed);
     gpudevices.push_back(d);
   }
-  cerr << endl;
+  cout << endl;
 
   return gpudevices;
 

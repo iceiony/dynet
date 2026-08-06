@@ -256,51 +256,53 @@ if(WITH_CUDA_BACKEND)
     endforeach()
   endif()
 
-  # cuda flags
-  set(CUDA_SEPARABLE_COMPILATION ON)
+  add_library(dynet ${dynet_library_SRCS} ${dynet_library_HDRS} ${dynet_gpu_SRCS})
 
-  if(CUDA_ARCH)
-    list(APPEND CUDA_NVCC_FLAGS "-arch=sm_${CUDA_ARCH};-std=c++11;-DVERBOSE;-DEIGEN_USE_GPU;-DHAVE_CUDA;-D_FORCE_INLINES")
-  else()
-    list(APPEND CUDA_NVCC_FLAGS "-gencode;arch=compute_30,code=sm_30;-gencode;arch=compute_35,code=sm_35;-gencode;arch=compute_37,code=sm_37;-gencode;arch=compute_50,code=sm_50;-gencode;arch=compute_52,code=sm_52;-gencode;arch=compute_52,code=compute_52;-std=c++11;-DVERBOSE;-DEIGEN_USE_GPU;-DHAVE_CUDA;-D_FORCE_INLINES")
-  endif()
-  if(CUDNN_FOUND)
-    list(APPEND CUDA_NVCC_FLAGS "-DHAVE_CUDNN")
-  endif()
-  if(CMAKE_COMPILER_IS_GNUCXX)
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 4.9 OR CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 4.9)
-      # gcc 4.9 or later versions raise SEGV due to the optimization problem.
-      # Use -O1 instead for now.
-      list(APPEND CUDA_NVCC_FLAGS "-O1")
-    else()
-      list(APPEND CUDA_NVCC_FLAGS "-O2")
-    endif()
-  else()
-    list(APPEND CUDA_NVCC_FLAGS "-O2")
-  endif()
-  if(MSVC)
-    # If MSVC, we need the boost flag because nvcc doesn't properly parse part of the boost template definitions
-    list(APPEND CUDA_NVCC_FLAGS "-DBOOST_NO_CXX11_ALLOCATOR")
-    list(APPEND CUDA_NVCC_FLAGS_DEBUG "--compiler-options \"/MDd\"")
-    list(APPEND CUDA_NVCC_FLAGS_RELEASE "--compiler-options \"/MD\"")
-    SET(CUDA_PROPAGATE_HOST_FLAGS OFF)
-    cuda_add_library(dynet ${dynet_library_SRCS} ${dynet_library_HDRS} ${dynet_gpu_SRCS})
-  else()
-    SET(CUDA_PROPAGATE_HOST_FLAGS OFF)
-    cuda_add_library(dynet ${dynet_library_SRCS} ${dynet_library_HDRS} ${dynet_gpu_SRCS} OPTIONS --compiler-options "-fPIC")
-  endif()
   set_target_properties(dynet PROPERTIES
-                        COMPILE_DEFINITIONS HAVE_CUDA)
-  if(CUDNN_FOUND)
+    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_ARCHITECTURES native
+  )
+
+  target_compile_definitions(dynet PRIVATE HAVE_CUDA)
+  target_compile_definitions(dynet PRIVATE EIGEN_USE_GPU)
+  target_compile_definitions(dynet PRIVATE VERBOSE)
+  target_compile_definitions(dynet PRIVATE _FORCE_INLINES)
+
+  target_compile_options(dynet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
+    --expt-relaxed-constexpr
+    --expt-extended-lambda
+    -std=c++20
+  >)
+
+  if(TARGET CUDA::cudnn)
     target_compile_definitions(dynet PRIVATE HAVE_CUDNN)
   endif()
-  cuda_add_cublas_to_target(dynet)
-  target_link_libraries(dynet ${LIBS})
+
+  if(CMAKE_COMPILER_IS_GNUCXX)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.9)
+      target_compile_options(dynet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O1>)
+    else()
+      target_compile_options(dynet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O2>)
+    endif()
+  else()
+    target_compile_options(dynet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O2>)
+  endif()
+
+  if(MSVC)
+    target_compile_definitions(dynet PRIVATE BOOST_NO_CXX11_ALLOCATOR)
+    target_compile_options(dynet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--compiler-options=/MD>)
+  else()
+    target_compile_options(dynet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--compiler-options=-fPIC>)
+  endif()
+
+  target_link_libraries(dynet ${LIBS} CUDA::cublas)
 else()
   # Build cpu library
   add_library(dynet ${dynet_library_SRCS} ${dynet_library_HDRS})
   target_link_libraries(dynet ${LIBS})
 endif(WITH_CUDA_BACKEND)
+
+
 
 install(FILES ${dynet_library_HDRS} DESTINATION include/dynet)
 install(TARGETS dynet DESTINATION lib)

@@ -154,7 +154,7 @@ if ENV.get("MSVC") == "1":
     append_cmake_list(LIBRARY_DIRS, ENV.get("CUDA_RT_DIRS"))
     DATA_FILES += [DYNET_LIB_DIR + lib + ".lib" for lib in LIBRARIES]
 else:
-    COMPILER_ARGS[:] = ["-std=c++11", "-Wno-unused-function"]
+    COMPILER_ARGS[:] = ["-std=c++14", "-Wno-unused-function"]
     RUNTIME_LIB_DIRS.extend([DYNET_LIB_DIR, LIBS_INSTALL_DIR])
     # in some OSX systems, the following extra flags are needed:
     if platform.system() == "Darwin":
